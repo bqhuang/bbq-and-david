@@ -3,53 +3,18 @@ import { spawn } from "node:child_process";
 const endpoint = "https://bbq-and-david.vercel.app/api/command";
 const intervalMs = 10_000;
 
-async function run(command, args) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(command, args, {
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-
-    let stdout = "";
-    let stderr = "";
-
-    child.stdout.on("data", (chunk) => {
-      stdout += chunk;
-    });
-
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk;
-    });
-
-    child.on("error", reject);
-    child.on("close", (code) => {
-      if (code) {
-        reject(new Error(stderr.trim() || `${command} exited with code ${code}`));
-        return;
-      }
-
-      resolve(stdout.trim());
-    });
-  });
+function readableError(error) {
+  return error instanceof Error ? error.message : String(error);
 }
 
-async function getAudioStreamUrl(url) {
-  const output = await run("python3", [
-    "-m",
-    "yt_dlp",
-    "--no-playlist",
-    "-f",
-    "bestaudio",
-    "-g",
-    url,
-  ]);
+async function clearCommand() {
+  await fetch(endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ command: null }),
+  });
 
-  const streamUrl = output.split("\n").find(Boolean);
-
-  if (!streamUrl) {
-    throw new Error("yt-dlp did not return an audio stream URL.");
-  }
-
-  return streamUrl;
+  console.log("Command cleared");
 }
 
 async function playYouTube(url) {
@@ -57,17 +22,95 @@ async function playYouTube(url) {
     throw new Error("PLAY command did not include a YouTube URL.");
   }
 
-  const streamUrl = await getAudioStreamUrl(url);
+  console.log(`URL: ${url}`);
+  console.log("Starting YouTube audio stream...");
 
-  console.log("Playing audio...");
+  await new Promise((resolve, reject) => {
+    const ytdlp = spawn(
+      "python3",
+      [
+        "-m",
+        "yt_dlp",
+        "--no-playlist",
+        "-f",
+        "bestaudio[ext=m4a]/bestaudio/best",
+        "-o",
+        "-",
+        url,
+      ],
+      { stdio: ["ignore", "pipe", "pipe"] },
+    );
 
-  await run("ffplay", [
-    "-nodisp",
-    "-autoexit",
-    "-loglevel",
-    "error",
-    streamUrl,
-  ]);
+    const ffplay = spawn(
+      "ffplay",
+      ["-nodisp", "-autoexit", "-loglevel", "warning", "-i", "pipe:0"],
+      { stdio: ["pipe", "ignore", "pipe"] },
+    );
+
+    let settled = false;
+    let ytdlpError = "";
+    let ffplayError = "";
+    let ytdlpCode = null;
+    let ffplayCode = null;
+
+    function fail(error) {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      ytdlp.kill();
+      ffplay.kill();
+      reject(error);
+    }
+
+    function finishIfReady() {
+      if (settled || ytdlpCode === null || ffplayCode === null) {
+        return;
+      }
+
+      settled = true;
+
+      if (ytdlpCode || ffplayCode) {
+        reject(
+          new Error(
+            ytdlpError.trim() ||
+              ffplayError.trim() ||
+              `yt-dlp exited with code ${ytdlpCode}, ffplay exited with code ${ffplayCode}`,
+          ),
+        );
+        return;
+      }
+
+      console.log("Playback finished");
+      resolve();
+    }
+
+    ytdlp.stdout.pipe(ffplay.stdin);
+
+    ytdlp.stderr.on("data", (chunk) => {
+      ytdlpError += chunk;
+    });
+
+    ffplay.stderr.on("data", (chunk) => {
+      ffplayError += chunk;
+    });
+
+    ytdlp.on("error", fail);
+    ffplay.on("error", fail);
+
+    ytdlp.on("close", (code) => {
+      ytdlpCode = code ?? 0;
+      finishIfReady();
+    });
+
+    ffplay.on("close", (code) => {
+      ffplayCode = code ?? 0;
+      finishIfReady();
+    });
+
+    ffplay.stdin.on("error", () => {});
+  });
 }
 
 async function checkForCommand() {
@@ -80,17 +123,16 @@ async function checkForCommand() {
     }
 
     console.log("PLAY received");
-    await playYouTube(data.url);
 
-    await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ command: null }),
-    });
-
-    console.log("Command cleared");
+    try {
+      await playYouTube(data.url);
+    } catch (error) {
+      console.warn(`Playback failed: ${readableError(error)}`);
+    } finally {
+      await clearCommand();
+    }
   } catch (error) {
-    console.warn(`Warning: ${error.message}`);
+    console.warn(`Warning: ${readableError(error)}`);
   }
 }
 
