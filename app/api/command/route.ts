@@ -5,25 +5,25 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const { data, error } = await supabase
     .from("command_state")
-    .select("command")
+    .select("command, url")
     .eq("id", "main")
     .single();
 
   if (error) {
     return Response.json(
-      { command: null },
+      { command: null, url: null },
       { status: 500, headers: { "Cache-Control": "no-store" } },
     );
   }
 
   return Response.json(
-    { command: data.command },
+    { command: data.command, url: data.url },
     { headers: { "Cache-Control": "no-store" } },
   );
 }
 
 export async function POST(request: Request) {
-  let body: { command?: unknown } = {};
+  let body: { command?: unknown; url?: unknown } = {};
 
   try {
     body = await request.json();
@@ -32,23 +32,24 @@ export async function POST(request: Request) {
   }
 
   const command = body.command === "PLAY" ? "PLAY" : null;
+  const url = command === "PLAY" && typeof body.url === "string" ? body.url : null;
 
   const { data, error } = await supabase
     .from("command_state")
-    .update({ command, updated_at: new Date().toISOString() })
+    .update({ command, url, updated_at: new Date().toISOString() })
     .eq("id", "main")
-    .select("command")
+    .select("command, url")
     .single();
 
   if (error) {
     return Response.json(
-      { command: null },
+      { command: null, url: null },
       { status: 500, headers: { "Cache-Control": "no-store" } },
     );
   }
 
   return Response.json(
-    { command: data.command },
+    { command: data.command, url: data.url },
     { headers: { "Cache-Control": "no-store" } },
   );
 }
