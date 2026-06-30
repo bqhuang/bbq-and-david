@@ -1,36 +1,73 @@
 import { spawn } from "node:child_process";
-import { access } from "node:fs/promises";
-import { constants } from "node:fs";
 
-const audioFile = "/Users/bingqing/bbq-and-david/bangbangbangbang.m4a";
 const endpoint = "https://bbq-and-david.vercel.app/api/command";
 const intervalMs = 10_000;
 
-async function playAudio() {
-  try {
-    await access(audioFile, constants.F_OK);
-  } catch {
-    console.error(`Could not find the audio file at:\n${audioFile}`);
-    return;
-  }
-
-  console.log("Playing audio...");
-
-  await new Promise((resolve, reject) => {
-    const player = spawn("/usr/bin/afplay", [audioFile], {
-      stdio: ["ignore", "inherit", "inherit"],
+async function run(command, args) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      stdio: ["ignore", "pipe", "pipe"],
     });
 
-    player.on("error", reject);
-    player.on("close", (code) => {
+    let stdout = "";
+    let stderr = "";
+
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+    });
+
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+
+    child.on("error", reject);
+    child.on("close", (code) => {
       if (code) {
-        reject(new Error(`afplay exited with code ${code}`));
+        reject(new Error(stderr.trim() || `${command} exited with code ${code}`));
         return;
       }
 
-      resolve();
+      resolve(stdout.trim());
     });
   });
+}
+
+async function getAudioStreamUrl(url) {
+  const output = await run("python3", [
+    "-m",
+    "yt_dlp",
+    "--no-playlist",
+    "-f",
+    "bestaudio",
+    "-g",
+    url,
+  ]);
+
+  const streamUrl = output.split("\n").find(Boolean);
+
+  if (!streamUrl) {
+    throw new Error("yt-dlp did not return an audio stream URL.");
+  }
+
+  return streamUrl;
+}
+
+async function playYouTube(url) {
+  if (!url) {
+    throw new Error("PLAY command did not include a YouTube URL.");
+  }
+
+  const streamUrl = await getAudioStreamUrl(url);
+
+  console.log("Playing audio...");
+
+  await run("ffplay", [
+    "-nodisp",
+    "-autoexit",
+    "-loglevel",
+    "error",
+    streamUrl,
+  ]);
 }
 
 async function checkForCommand() {
@@ -43,7 +80,7 @@ async function checkForCommand() {
     }
 
     console.log("PLAY received");
-    await playAudio();
+    await playYouTube(data.url);
 
     await fetch(endpoint, {
       method: "POST",
