@@ -4,7 +4,9 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "play": "node scripts/play.mjs",
+    "listen": "node scripts/listen.mjs"
   },
   "dependencies": {
     "@tailwindcss/postcss": "4.3.2",
