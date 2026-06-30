@@ -31,7 +31,8 @@ export async function POST(request: Request) {
     body = {};
   }
 
-  const command = body.command === "PLAY" ? "PLAY" : null;
+  const command =
+    body.command === "PLAY" || body.command === "STOP" ? body.command : null;
   const url = command === "PLAY" && typeof body.url === "string" ? body.url : null;
 
   const { data, error } = await supabase
