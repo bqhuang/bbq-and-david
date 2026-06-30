@@ -9,6 +9,7 @@
     "listen": "node scripts/listen.mjs"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.110.0",
     "@tailwindcss/postcss": "4.3.2",
     "next": "16.2.9",
     "react": "19.2.7",
