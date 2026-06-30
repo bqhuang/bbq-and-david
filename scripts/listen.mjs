@@ -23,6 +23,46 @@ async function playYouTube(url) {
   }
 
   console.log(`URL: ${url}`);
+  await playWithMpv(url);
+}
+
+async function playWithMpv(url) {
+  console.log("Starting YouTube audio stream...");
+
+  try {
+    await new Promise((resolve, reject) => {
+      const player = spawn("mpv", ["--no-video", "--really-quiet", url], {
+        stdio: ["ignore", "ignore", "pipe"],
+      });
+
+      let stderr = "";
+
+      player.stderr.on("data", (chunk) => {
+        stderr += chunk;
+      });
+
+      player.on("error", reject);
+      player.on("close", (code) => {
+        if (code) {
+          reject(new Error(stderr.trim() || `mpv exited with code ${code}`));
+          return;
+        }
+
+        console.log("Playback finished");
+        resolve();
+      });
+    });
+  } catch (error) {
+    if (error?.code !== "ENOENT") {
+      throw error;
+    }
+
+    console.warn("mpv is not available; falling back to yt-dlp and ffplay.");
+    await playWithYtDlpAndFfplay(url);
+  }
+}
+
+async function playWithYtDlpAndFfplay(url) {
   console.log("Starting YouTube audio stream...");
 
   await new Promise((resolve, reject) => {
@@ -123,13 +163,12 @@ async function checkForCommand() {
     }
 
     console.log("PLAY received");
+    await clearCommand();
 
     try {
       await playYouTube(data.url);
     } catch (error) {
       console.warn(`Playback failed: ${readableError(error)}`);
-    } finally {
-      await clearCommand();
     }
   } catch (error) {
     console.warn(`Warning: ${readableError(error)}`);
