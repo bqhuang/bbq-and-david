@@ -19,6 +19,14 @@ async function clearCommand() {
   console.log("Command cleared");
 }
 
+async function setPlaybackStatus(status) {
+  await fetch(endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ command: null, status }),
+  });
+}
+
 function stopPlayback() {
   if (!currentPlayer) {
     return;
@@ -44,6 +52,9 @@ function startPlayback(url) {
   });
 
   currentPlayer = player;
+  setPlaybackStatus("playing").catch((error) => {
+    console.warn(`Warning: ${readableError(error)}`);
+  });
 
   let stderr = "";
 
@@ -52,17 +63,23 @@ function startPlayback(url) {
   });
 
   player.on("error", (error) => {
-    if (currentPlayer === player) {
-      currentPlayer = null;
+    if (currentPlayer !== player) {
+      return;
     }
 
+    currentPlayer = null;
     console.warn(`Playback failed: ${readableError(error)}`);
+    setPlaybackStatus("stopped").catch((statusError) => {
+      console.warn(`Warning: ${readableError(statusError)}`);
+    });
   });
 
   player.on("close", (code, signal) => {
-    if (currentPlayer === player) {
-      currentPlayer = null;
+    if (currentPlayer !== player) {
+      return;
     }
+
+    currentPlayer = null;
 
     if (signal === "SIGTERM") {
       return;
@@ -72,10 +89,16 @@ function startPlayback(url) {
       console.warn(
         `Playback failed: ${stderr.trim() || `mpv exited with code ${code}`}`,
       );
+      setPlaybackStatus("stopped").catch((error) => {
+        console.warn(`Warning: ${readableError(error)}`);
+      });
       return;
     }
 
     console.log("Playback finished");
+    setPlaybackStatus("stopped").catch((error) => {
+      console.warn(`Warning: ${readableError(error)}`);
+    });
   });
 }
 
@@ -87,7 +110,14 @@ async function checkForCommand() {
     if (data?.command === "PLAY") {
       console.log("PLAY received");
       await clearCommand();
-      startPlayback(data.url);
+
+      try {
+        startPlayback(data.url);
+      } catch (error) {
+        console.warn(`Playback failed: ${readableError(error)}`);
+        await setPlaybackStatus("stopped");
+      }
+
       return;
     }
 
@@ -95,6 +125,7 @@ async function checkForCommand() {
       console.log("STOP received");
       await clearCommand();
       stopPlayback();
+      await setPlaybackStatus("stopped");
       console.log("Playback stopped");
     }
   } catch (error) {

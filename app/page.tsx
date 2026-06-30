@@ -1,10 +1,29 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 export default function Home() {
   const [status, setStatus] = useState("");
+  const [playbackStatus, setPlaybackStatus] = useState("stopped");
   const [url, setUrl] = useState("");
+
+  async function refreshStatus() {
+    try {
+      const response = await fetch("/api/command");
+      const data = await response.json();
+      setPlaybackStatus(data.status === "playing" ? "playing" : "stopped");
+    } catch {
+      setPlaybackStatus("stopped");
+    }
+  }
+
+  useEffect(() => {
+    refreshStatus();
+
+    const interval = setInterval(refreshStatus, 5_000);
+
+    return () => clearInterval(interval);
+  }, []);
 
   async function play() {
     setStatus("Sending...");
@@ -64,6 +83,9 @@ export default function Home() {
           >
             Stop
           </button>
+        </div>
+        <div className="text-xs text-neutral-500">
+          Status: {playbackStatus === "playing" ? "Playing" : "Stopped"}
         </div>
         {status ? <div className="text-xs text-neutral-500">{status}</div> : null}
       </div>
