@@ -210,9 +210,13 @@ export default function Home() {
       const nextStatus = data.status === "playing" ? "playing" : "stopped";
 
       setPlaybackStatus(nextStatus);
-      setPlaybackUrl(
-        nextStatus === "playing" && typeof data.url === "string" ? data.url : "",
-      );
+      setPlaybackUrl((currentUrl) => {
+        if (nextStatus !== "playing") {
+          return "";
+        }
+
+        return typeof data.url === "string" && data.url ? data.url : currentUrl;
+      });
       setPendingAction((current) => {
         if (current === "play" && nextStatus === "playing") {
           return null;
@@ -458,6 +462,7 @@ export default function Home() {
             {queueItems.length ? (
               <ol className="max-h-[8.875rem] space-y-1 overflow-y-auto pr-1">
                 {queueItems.map((item) => {
+                  // The animated queue icon follows playback status, not loading state.
                   const isCurrentSong =
                     playbackStatus === "playing" && item.url === playbackUrl;
 
