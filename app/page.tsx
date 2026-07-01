@@ -229,13 +229,14 @@ export default function Home() {
 
   async function play() {
     setStatus("Sending...");
+    setPlaybackStatus("playing");
     void playInBrowser(url);
 
     try {
       const response = await fetch("/api/command", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ command: "PLAY", url }),
+        body: JSON.stringify({ command: "PLAY", url, status: "playing" }),
       });
 
       setStatus(response.ok ? "Sent" : "Failed");
@@ -246,13 +247,14 @@ export default function Home() {
 
   async function stop() {
     setStatus("Sending...");
+    setPlaybackStatus("stopped");
     stopBrowserPlayback();
 
     try {
       const response = await fetch("/api/command", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ command: "STOP" }),
+        body: JSON.stringify({ command: "STOP", status: "stopped" }),
       });
 
       setStatus(response.ok ? "Sent" : "Failed");
