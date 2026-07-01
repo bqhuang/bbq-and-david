@@ -84,6 +84,30 @@ export async function POST(request: Request) {
   return Response.json({ item: data });
 }
 
+export async function DELETE(request: Request) {
+  const id = new URL(request.url).searchParams.get("id")?.trim();
+
+  if (!id) {
+    return Response.json({ error: "Missing queue item." }, { status: 400 });
+  }
+
+  const { error } = await supabase.from("queue_items").delete().eq("id", id);
+
+  if (error) {
+    console.error("Queue item delete failed:", error);
+
+    return Response.json(
+      { error: "Could not remove that song." },
+      { status: 500 },
+    );
+  }
+
+  return Response.json(
+    { ok: true },
+    { headers: { "Cache-Control": "no-store" } },
+  );
+}
+
 async function getYouTubeTitle(url: string) {
   try {
     const response = await fetch(

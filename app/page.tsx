@@ -305,6 +305,34 @@ export default function Home() {
     }
   }
 
+  async function removeSong(id: string) {
+    const previousItems = queueItems;
+
+    setQueueMessage("");
+    setQueueItems((items) => items.filter((item) => item.id !== id));
+
+    try {
+      const response = await fetch(`/api/queue?id=${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
+      const data = (await response.json().catch(() => null)) as {
+        error?: unknown;
+      } | null;
+
+      if (!response.ok) {
+        setQueueItems(previousItems);
+        setQueueMessage(
+          typeof data?.error === "string"
+            ? data.error
+            : "Could not remove that song.",
+        );
+      }
+    } catch {
+      setQueueItems(previousItems);
+      setQueueMessage("Could not remove that song.");
+    }
+  }
+
   async function play() {
     const firstSong = queueItems[0];
 
@@ -450,9 +478,17 @@ export default function Home() {
                 {queueItems.map((item) => (
                   <li
                     key={item.id}
-                    className="truncate py-1 leading-5 text-neutral-800"
+                    className="group flex max-w-full items-center py-1 leading-5 text-neutral-800"
                   >
-                    ♪ {item.title}
+                    <span className="truncate">♪ {item.title}</span>
+                    <button
+                      type="button"
+                      aria-label="Remove song"
+                      onClick={() => removeSong(item.id)}
+                      className="ml-1 shrink-0 cursor-pointer text-xs text-neutral-400 opacity-0 transition hover:text-neutral-800 focus:opacity-100 focus:outline-none group-hover:opacity-100"
+                    >
+                      ×
+                    </button>
                   </li>
                 ))}
               </ol>
