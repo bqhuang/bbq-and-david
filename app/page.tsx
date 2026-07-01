@@ -478,14 +478,14 @@ export default function Home() {
                 {queueItems.map((item) => (
                   <li
                     key={item.id}
-                    className="group flex max-w-full items-center py-1 leading-5 text-neutral-800"
+                    className="group grid max-w-full grid-cols-[minmax(0,1fr)_1.25rem] items-center rounded-md px-1 py-1 leading-5 text-neutral-800 transition-colors duration-200 hover:bg-neutral-100/70"
                   >
                     <span className="truncate">♪ {item.title}</span>
                     <button
                       type="button"
                       aria-label="Remove song"
                       onClick={() => removeSong(item.id)}
-                      className="ml-1 shrink-0 cursor-pointer text-xs text-neutral-400 opacity-0 transition hover:text-neutral-800 focus:opacity-100 focus:outline-none group-hover:opacity-100"
+                      className="h-5 cursor-pointer text-center text-sm font-light leading-5 text-current opacity-0 transition-opacity duration-200 focus:opacity-100 focus:outline-none group-hover:opacity-100"
                     >
                       ×
                     </button>
