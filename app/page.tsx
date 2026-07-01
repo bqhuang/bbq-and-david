@@ -243,6 +243,15 @@ export default function Home() {
     } catch {}
   }
 
+  async function togglePlayback() {
+    if (playbackStatus === "playing") {
+      await stop();
+      return;
+    }
+
+    await play();
+  }
+
   async function enableBrowserPlayback() {
     enabledRef.current = true;
 
@@ -287,25 +296,13 @@ export default function Home() {
           placeholder="Paste a YouTube URL"
           className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-neutral-400"
         />
-        <div className="grid w-full grid-cols-2 gap-2">
-          <button
-            type="button"
-            onClick={play}
-            className="cursor-pointer rounded-lg bg-neutral-900 px-4 py-2 text-sm text-white transition hover:bg-neutral-700"
-          >
-            Play
-          </button>
-          <button
-            type="button"
-            onClick={stop}
-            className="cursor-pointer rounded-lg border border-neutral-200 px-4 py-2 text-sm transition hover:bg-neutral-50"
-          >
-            Stop
-          </button>
-        </div>
-        <div className="text-xs text-neutral-500">
-          Status: {playbackStatus === "playing" ? "Playing" : "Stopped"}
-        </div>
+        <button
+          type="button"
+          onClick={togglePlayback}
+          className="w-full cursor-pointer rounded-lg bg-neutral-900 px-4 py-2 text-sm text-white transition hover:bg-neutral-700"
+        >
+          {playbackStatus === "playing" ? "Stop" : "Play"}
+        </button>
       </div>
       <div
         aria-hidden="true"
