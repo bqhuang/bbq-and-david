@@ -10,8 +10,10 @@ export async function GET() {
     .order("created_at", { ascending: true });
 
   if (error) {
+    console.error("Queue fetch failed:", error);
+
     return Response.json(
-      { items: [] },
+      { error: "Could not load queue.", items: [] },
       { status: 500, headers: { "Cache-Control": "no-store" } },
     );
   }
@@ -39,15 +41,27 @@ export async function POST(request: Request) {
   const title = await getYouTubeTitle(url);
 
   if (!title) {
-    return Response.json({ error: "Could not read YouTube title." }, { status: 400 });
+    return Response.json(
+      { error: "Could not read that YouTube link." },
+      { status: 400 },
+    );
   }
 
-  const { data: lastItem } = await supabase
+  const { data: lastItem, error: positionError } = await supabase
     .from("queue_items")
     .select("position")
     .order("position", { ascending: false })
     .limit(1)
     .maybeSingle();
+
+  if (positionError) {
+    console.error("Queue position lookup failed:", positionError);
+
+    return Response.json(
+      { error: "Could not choose a queue position." },
+      { status: 500 },
+    );
+  }
 
   const position =
     typeof lastItem?.position === "number" ? lastItem.position + 1 : 1;
@@ -59,7 +73,12 @@ export async function POST(request: Request) {
     .single();
 
   if (error) {
-    return Response.json({ error: "Could not add song." }, { status: 500 });
+    console.error("Queue item insert failed:", error);
+
+    return Response.json(
+      { error: "Could not save that song to the queue." },
+      { status: 500 },
+    );
   }
 
   return Response.json({ item: data });
@@ -72,13 +91,27 @@ async function getYouTubeTitle(url: string) {
     );
 
     if (!response.ok) {
+      console.error("YouTube oEmbed failed:", {
+        status: response.status,
+        statusText: response.statusText,
+        url,
+      });
+
       return null;
     }
 
     const data = (await response.json()) as { title?: unknown };
 
-    return typeof data.title === "string" ? data.title : null;
-  } catch {
+    if (typeof data.title !== "string" || !data.title.trim()) {
+      console.error("YouTube oEmbed response did not include a title:", data);
+
+      return null;
+    }
+
+    return data.title.trim();
+  } catch (error) {
+    console.error("YouTube oEmbed request failed:", error);
+
     return null;
   }
 }

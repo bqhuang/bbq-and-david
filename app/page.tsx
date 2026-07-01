@@ -282,16 +282,24 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url }),
       });
+      const data = (await response.json().catch(() => null)) as {
+        error?: unknown;
+      } | null;
 
       if (!response.ok) {
-        setQueueMessage("Could not add that song.");
+        setQueueMessage(
+          typeof data?.error === "string"
+            ? data.error
+            : "Could not add that song. Please try another YouTube link.",
+        );
         return;
       }
 
+      setQueueMessage("");
       setUrl("");
       await refreshQueue();
     } catch {
-      setQueueMessage("Could not add that song.");
+      setQueueMessage("Could not add that song. Please try again.");
     } finally {
       setIsAdding(false);
     }
