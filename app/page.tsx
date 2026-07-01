@@ -73,11 +73,7 @@ function getYouTubeVideoId(url: string) {
 export default function Home() {
   const [hasCheckedOnboarding, setHasCheckedOnboarding] = useState(false);
   const [hasJoinedMusicRoom, setHasJoinedMusicRoom] = useState(false);
-  const [status, setStatus] = useState("");
   const [playbackStatus, setPlaybackStatus] = useState("stopped");
-  const [browserPlaybackEnabled, setBrowserPlaybackEnabled] = useState(false);
-  const [browserStatus, setBrowserStatus] = useState("disabled");
-  const [browserMessage, setBrowserMessage] = useState("");
   const [url, setUrl] = useState("");
   const playerRootRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<YouTubePlayer | null>(null);
@@ -91,8 +87,6 @@ export default function Home() {
 
     if (hasJoined) {
       enabledRef.current = true;
-      setBrowserPlaybackEnabled(true);
-      setBrowserStatus("enabled");
     }
 
     setHasJoinedMusicRoom(hasJoined);
@@ -126,22 +120,7 @@ export default function Home() {
           if (pendingPlayRef.current) {
             pendingPlayRef.current = false;
             playerRef.current?.playVideo();
-            setBrowserStatus("playing");
           }
-        },
-        onStateChange: (event) => {
-          if (event.data === 1) {
-            setBrowserStatus("playing");
-            return;
-          }
-
-          if (event.data === 0 || event.data === 2 || event.data === 5) {
-            setBrowserStatus(enabledRef.current ? "stopped" : "disabled");
-          }
-        },
-        onError: () => {
-          setBrowserStatus("blocked");
-          setBrowserMessage("Click Enable browser playback first.");
         },
       },
     });
@@ -157,8 +136,6 @@ export default function Home() {
     }
 
     if (!enabledRef.current) {
-      setBrowserStatus("blocked");
-      setBrowserMessage("Click Enable browser playback first.");
       return;
     }
 
@@ -169,8 +146,6 @@ export default function Home() {
         return;
       }
 
-      setBrowserMessage("");
-
       if (currentVideoIdRef.current !== videoId) {
         currentVideoIdRef.current = videoId;
         player.loadVideoById(videoId);
@@ -178,7 +153,6 @@ export default function Home() {
         if (playerReadyRef.current) {
           pendingPlayRef.current = false;
           player.playVideo();
-          setBrowserStatus("playing");
           return;
         }
 
@@ -193,11 +167,7 @@ export default function Home() {
 
       pendingPlayRef.current = false;
       player.playVideo();
-      setBrowserStatus("playing");
-    } catch {
-      setBrowserStatus("blocked");
-      setBrowserMessage("Click Enable browser playback first.");
-    }
+    } catch {}
   }
 
   function stopBrowserPlayback() {
@@ -205,7 +175,6 @@ export default function Home() {
     currentVideoIdRef.current = "";
     playerRef.current?.pauseVideo();
     playerRef.current?.stopVideo();
-    setBrowserStatus(enabledRef.current ? "stopped" : "disabled");
   }
 
   async function syncBrowserPlayback(nextStatus: string, nextUrl: unknown) {
@@ -247,53 +216,40 @@ export default function Home() {
   }, [hasJoinedMusicRoom]);
 
   async function play() {
-    setStatus("Sending...");
     setPlaybackStatus("playing");
     void playInBrowser(url);
 
     try {
-      const response = await fetch("/api/command", {
+      await fetch("/api/command", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ command: "PLAY", url, status: "playing" }),
       });
 
-      setStatus(response.ok ? "Sent" : "Failed");
-    } catch {
-      setStatus("Failed");
-    }
+    } catch {}
   }
 
   async function stop() {
-    setStatus("Sending...");
     setPlaybackStatus("stopped");
     stopBrowserPlayback();
 
     try {
-      const response = await fetch("/api/command", {
+      await fetch("/api/command", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ command: "STOP", status: "stopped" }),
       });
 
-      setStatus(response.ok ? "Sent" : "Failed");
-    } catch {
-      setStatus("Failed");
-    }
+    } catch {}
   }
 
   async function enableBrowserPlayback() {
     enabledRef.current = true;
-    setBrowserPlaybackEnabled(true);
-    setBrowserStatus("enabled");
-    setBrowserMessage("Browser playback enabled");
 
     try {
       await ensurePlayer();
       await refreshStatus();
-    } catch {
-      setBrowserMessage("Click Enable browser playback first.");
-    }
+    } catch {}
   }
 
   async function joinMusicRoom() {
@@ -347,23 +303,9 @@ export default function Home() {
             Stop
           </button>
         </div>
-        <button
-          type="button"
-          onClick={enableBrowserPlayback}
-          className="w-full cursor-pointer rounded-lg border border-neutral-200 px-4 py-2 text-sm transition hover:bg-neutral-50"
-        >
-          {browserPlaybackEnabled
-            ? "Browser playback enabled"
-            : "Enable browser playback"}
-        </button>
         <div className="text-xs text-neutral-500">
           Status: {playbackStatus === "playing" ? "Playing" : "Stopped"}
         </div>
-        <div className="text-xs text-neutral-500">Browser: {browserStatus}</div>
-        {browserMessage ? (
-          <div className="text-xs text-neutral-500">{browserMessage}</div>
-        ) : null}
-        {status ? <div className="text-xs text-neutral-500">{status}</div> : null}
       </div>
       <div
         aria-hidden="true"
