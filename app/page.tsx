@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { supabase } from "../lib/supabase";
 
 type YouTubePlayer = {
   loadVideoById: (videoId: string) => void;
@@ -22,6 +23,13 @@ type YouTubePlayerConstructor = new (
     };
   },
 ) => YouTubePlayer;
+
+type QueueItem = {
+  id: string;
+  url: string;
+  title: string;
+  position: number;
+};
 
 declare global {
   interface Window {
@@ -75,6 +83,9 @@ export default function Home() {
   const [hasJoinedMusicRoom, setHasJoinedMusicRoom] = useState(false);
   const [playbackStatus, setPlaybackStatus] = useState("stopped");
   const [pendingAction, setPendingAction] = useState<"play" | "stop" | null>(null);
+  const [queueItems, setQueueItems] = useState<QueueItem[]>([]);
+  const [isAdding, setIsAdding] = useState(false);
+  const [queueMessage, setQueueMessage] = useState("");
   const [url, setUrl] = useState("");
   const playerRootRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<YouTubePlayer | null>(null);
@@ -221,21 +232,91 @@ export default function Home() {
     }
 
     refreshStatus();
+    refreshQueue();
+
+    const channel = supabase
+      .channel("queue-items")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "queue_items",
+        },
+        () => {
+          void refreshQueue();
+        },
+      )
+      .subscribe();
 
     const interval = setInterval(refreshStatus, 5_000);
 
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      void supabase.removeChannel(channel);
+    };
   }, [hasJoinedMusicRoom]);
 
+  async function refreshQueue() {
+    try {
+      const response = await fetch("/api/queue");
+      const data = await response.json();
+
+      setQueueItems(Array.isArray(data.items) ? data.items : []);
+    } catch {
+      setQueueItems([]);
+    }
+  }
+
+  async function addSong() {
+    if (!url.trim() || isAdding) {
+      return;
+    }
+
+    setIsAdding(true);
+    setQueueMessage("");
+
+    try {
+      const response = await fetch("/api/queue", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      });
+
+      if (!response.ok) {
+        setQueueMessage("Could not add that song.");
+        return;
+      }
+
+      setUrl("");
+      await refreshQueue();
+    } catch {
+      setQueueMessage("Could not add that song.");
+    } finally {
+      setIsAdding(false);
+    }
+  }
+
   async function play() {
+    const firstSong = queueItems[0];
+
+    if (!firstSong) {
+      setQueueMessage("Add a song first.");
+      return;
+    }
+
     setPendingAction("play");
-    void playInBrowser(url);
+    void playInBrowser(firstSong.url);
 
     try {
       await fetch("/api/command", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ command: "PLAY", url, status: "playing" }),
+        body: JSON.stringify({
+          command: "PLAY",
+          url: firstSong.url,
+          status: "playing",
+        }),
       });
 
     } catch {}
@@ -303,6 +384,7 @@ export default function Home() {
 
   const isLoading = pendingAction !== null;
   const isPlaying = playbackStatus === "playing" && !isLoading;
+  const hasQueuedSongs = queueItems.length > 0;
   const buttonLabel = isLoading
     ? "Loading"
     : playbackStatus === "playing"
@@ -322,7 +404,29 @@ export default function Home() {
         />
         <button
           type="button"
-          disabled={isLoading}
+          disabled={isAdding}
+          onClick={addSong}
+          className="w-full cursor-pointer rounded-lg border border-neutral-200 px-4 py-2 text-sm transition hover:bg-neutral-50 disabled:cursor-default disabled:opacity-70"
+        >
+          {isAdding ? "Adding" : "Add"}
+        </button>
+        <div className="w-full text-sm">
+          <div className="mb-2 text-xs text-neutral-500">Queue</div>
+          {queueItems.length ? (
+            <ol className="space-y-1">
+              {queueItems.map((item) => (
+                <li key={item.id} className="truncate text-neutral-800">
+                  ♪ {item.title}
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <div className="text-xs text-neutral-500">Add a song first.</div>
+          )}
+        </div>
+        <button
+          type="button"
+          disabled={isLoading || (!isPlaying && !hasQueuedSongs)}
           onClick={togglePlayback}
           className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-neutral-900 px-4 py-2 text-sm text-white transition hover:bg-neutral-700 disabled:cursor-default disabled:opacity-80"
         >
@@ -341,6 +445,9 @@ export default function Home() {
           )}
           {buttonLabel}
         </button>
+        {queueMessage ? (
+          <div className="text-xs text-neutral-500">{queueMessage}</div>
+        ) : null}
       </div>
       <div
         aria-hidden="true"
