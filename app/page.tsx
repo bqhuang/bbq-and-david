@@ -299,8 +299,17 @@ export default function Home() {
         <button
           type="button"
           onClick={togglePlayback}
-          className="w-full cursor-pointer rounded-lg bg-neutral-900 px-4 py-2 text-sm text-white transition hover:bg-neutral-700"
+          className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-neutral-900 px-4 py-2 text-sm text-white transition hover:bg-neutral-700"
         >
+          <span
+            aria-hidden="true"
+            className={`audio-bars ${playbackStatus === "playing" ? "is-playing" : ""}`}
+          >
+            <span />
+            <span />
+            <span />
+            <span />
+          </span>
           {playbackStatus === "playing" ? "Stop" : "Play"}
         </button>
       </div>
