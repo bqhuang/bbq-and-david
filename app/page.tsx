@@ -88,6 +88,7 @@ export default function Home() {
   const enabledRef = useRef(false);
   const playerReadyRef = useRef(false);
   const pendingPlayRef = useRef(false);
+  const pendingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const currentVideoIdRef = useRef("");
 
   useEffect(() => {
@@ -128,6 +129,7 @@ export default function Home() {
           if (pendingPlayRef.current) {
             pendingPlayRef.current = false;
             playerRef.current?.playVideo();
+            clearPending("play");
           }
         },
       },
@@ -136,22 +138,51 @@ export default function Home() {
     return playerRef.current;
   }
 
+  function clearPendingTimeout() {
+    if (!pendingTimeoutRef.current) {
+      return;
+    }
+
+    clearTimeout(pendingTimeoutRef.current);
+    pendingTimeoutRef.current = null;
+  }
+
+  function startPending(action: "play" | "stop") {
+    clearPendingTimeout();
+    setPendingAction(action);
+    pendingTimeoutRef.current = setTimeout(() => {
+      setPendingAction(null);
+      pendingTimeoutRef.current = null;
+    }, 8_000);
+  }
+
+  function clearPending(action?: "play" | "stop") {
+    clearPendingTimeout();
+    setPendingAction((current) => {
+      if (action && current !== action) {
+        return current;
+      }
+
+      return null;
+    });
+  }
+
   async function playInBrowser(nextUrl: string) {
     const videoId = getYouTubeVideoId(nextUrl);
 
     if (!videoId) {
-      return;
+      return false;
     }
 
     if (!enabledRef.current) {
-      return;
+      return false;
     }
 
     try {
       const player = await ensurePlayer();
 
       if (!player) {
-        return;
+        return false;
       }
 
       if (currentVideoIdRef.current !== videoId) {
@@ -161,21 +192,24 @@ export default function Home() {
         if (playerReadyRef.current) {
           pendingPlayRef.current = false;
           player.playVideo();
-          return;
+          return true;
         }
 
         pendingPlayRef.current = true;
-        return;
+        return false;
       }
 
       if (!playerReadyRef.current) {
         pendingPlayRef.current = true;
-        return;
+        return false;
       }
 
       pendingPlayRef.current = false;
       player.playVideo();
-    } catch {}
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   function stopBrowserPlayback() {
@@ -183,6 +217,7 @@ export default function Home() {
     currentVideoIdRef.current = "";
     playerRef.current?.pauseVideo();
     playerRef.current?.stopVideo();
+    clearPending("stop");
   }
 
   async function syncBrowserPlayback(nextStatus: string, nextUrl: unknown) {
@@ -204,10 +239,12 @@ export default function Home() {
     setPlaybackStatus(nextStatus);
     setPendingAction((current) => {
       if (current === "play" && nextStatus === "playing") {
+        clearPendingTimeout();
         return null;
       }
 
       if (current === "stop" && nextStatus === "stopped") {
+        clearPendingTimeout();
         return null;
       }
 
@@ -259,8 +296,12 @@ export default function Home() {
   }, [hasJoinedMusicRoom]);
 
   async function play() {
-    setPendingAction("play");
-    void playInBrowser(url);
+    startPending("play");
+
+    if (await playInBrowser(url)) {
+      clearPending("play");
+      setPlaybackStatus("playing");
+    }
 
     try {
       await fetch("/api/command", {
@@ -273,8 +314,9 @@ export default function Home() {
   }
 
   async function stop() {
-    setPendingAction("stop");
+    startPending("stop");
     stopBrowserPlayback();
+    setPlaybackStatus("stopped");
 
     try {
       await fetch("/api/command", {
