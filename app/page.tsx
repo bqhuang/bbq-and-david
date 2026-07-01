@@ -403,7 +403,6 @@ export default function Home() {
     <main className="flex min-h-screen items-center justify-center bg-white">
       <div className="grid w-full max-w-2xl grid-cols-1 items-center gap-8 px-6 sm:grid-cols-[12rem_minmax(0,20rem)]">
         <div className="flex flex-col items-center gap-5">
-          <div className="text-2xl">❤️</div>
           <button
             type="button"
             disabled={isLoading || (!isPlaying && !hasQueuedSongs)}
@@ -428,6 +427,7 @@ export default function Home() {
         </div>
 
         <div className="flex w-full flex-col gap-3">
+          <div className="text-center text-2xl">❤️</div>
           <input
             type="url"
             value={url}
@@ -446,7 +446,7 @@ export default function Home() {
           <div className="w-full text-sm">
             <div className="mb-2 text-xs text-neutral-500">Queue</div>
             {queueItems.length ? (
-              <ol className="max-h-[9.625rem] space-y-1 overflow-y-auto pr-1">
+              <ol className="max-h-[8.875rem] space-y-1 overflow-y-auto pr-1">
                 {queueItems.map((item) => (
                   <li
                     key={item.id}
