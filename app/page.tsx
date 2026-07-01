@@ -80,7 +80,7 @@ type CommandState = {
 export default function Home() {
   const [hasCheckedOnboarding, setHasCheckedOnboarding] = useState(false);
   const [hasJoinedMusicRoom, setHasJoinedMusicRoom] = useState(false);
-  const [playbackStatus, setPlaybackStatus] = useState("stopped");
+  const [localPlaybackStatus, setLocalPlaybackStatus] = useState("stopped");
   const [pendingAction, setPendingAction] = useState<"play" | "stop" | null>(null);
   const [url, setUrl] = useState("");
   const playerRootRef = useRef<HTMLDivElement>(null);
@@ -129,7 +129,18 @@ export default function Home() {
           if (pendingPlayRef.current) {
             pendingPlayRef.current = false;
             playerRef.current?.playVideo();
+          }
+        },
+        onStateChange: (event) => {
+          if (event.data === 1) {
+            setLocalPlaybackStatus("playing");
             clearPending("play");
+            return;
+          }
+
+          if (event.data === 0 || event.data === 2 || event.data === 5) {
+            setLocalPlaybackStatus("stopped");
+            clearPending("stop");
           }
         },
       },
@@ -217,6 +228,7 @@ export default function Home() {
     currentVideoIdRef.current = "";
     playerRef.current?.pauseVideo();
     playerRef.current?.stopVideo();
+    setLocalPlaybackStatus("stopped");
     clearPending("stop");
   }
 
@@ -236,7 +248,10 @@ export default function Home() {
   async function applyCommandState(data: CommandState) {
     const nextStatus = data.status === "playing" ? "playing" : "stopped";
 
-    setPlaybackStatus(nextStatus);
+    if (typeof data.url === "string") {
+      setUrl(data.url);
+    }
+
     setPendingAction((current) => {
       if (current === "play" && nextStatus === "playing") {
         clearPendingTimeout();
@@ -260,7 +275,7 @@ export default function Home() {
 
       await applyCommandState(data);
     } catch {
-      setPlaybackStatus("stopped");
+      setLocalPlaybackStatus("stopped");
     }
   }
 
@@ -298,10 +313,7 @@ export default function Home() {
   async function play() {
     startPending("play");
 
-    if (await playInBrowser(url)) {
-      clearPending("play");
-      setPlaybackStatus("playing");
-    }
+    await playInBrowser(url);
 
     try {
       await fetch("/api/command", {
@@ -316,7 +328,6 @@ export default function Home() {
   async function stop() {
     startPending("stop");
     stopBrowserPlayback();
-    setPlaybackStatus("stopped");
 
     try {
       await fetch("/api/command", {
@@ -333,7 +344,7 @@ export default function Home() {
       return;
     }
 
-    if (playbackStatus === "playing") {
+    if (localPlaybackStatus === "playing") {
       await stop();
       return;
     }
@@ -375,10 +386,10 @@ export default function Home() {
   }
 
   const isLoading = pendingAction !== null;
-  const isPlaying = playbackStatus === "playing" && !isLoading;
+  const isPlaying = localPlaybackStatus === "playing" && !isLoading;
   const buttonLabel = isLoading
     ? "Loading"
-    : playbackStatus === "playing"
+    : localPlaybackStatus === "playing"
       ? "Stop"
       : "Play";
 
