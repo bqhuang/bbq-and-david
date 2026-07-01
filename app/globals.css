@@ -15,7 +15,10 @@
 }
 
 .audio-bars.is-playing span {
-  animation: audio-bar 1.1s ease-in-out infinite;
+  animation-name: audio-bar;
+  animation-duration: 1.1s;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
 }
 
 .audio-bars.is-playing span:nth-child(2) {

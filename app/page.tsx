@@ -458,7 +458,8 @@ export default function Home() {
             {queueItems.length ? (
               <ol className="max-h-[8.875rem] space-y-1 overflow-y-auto pr-1">
                 {queueItems.map((item) => {
-                  const isCurrentSong = isPlaying && item.url === playbackUrl;
+                  const isCurrentSong =
+                    playbackStatus === "playing" && item.url === playbackUrl;
 
                   return (
                     <li
