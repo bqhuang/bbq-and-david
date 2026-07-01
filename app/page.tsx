@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 type YouTubePlayer = {
   loadVideoById: (videoId: string) => void;
   playVideo: () => void;
+  pauseVideo: () => void;
   stopVideo: () => void;
 };
 
@@ -14,6 +15,11 @@ type YouTubePlayerConstructor = new (
     height: string;
     width: string;
     playerVars: Record<string, number>;
+    events?: {
+      onReady?: () => void;
+      onStateChange?: (event: { data: number }) => void;
+      onError?: () => void;
+    };
   },
 ) => YouTubePlayer;
 
@@ -68,14 +74,17 @@ export default function Home() {
   const [status, setStatus] = useState("");
   const [playbackStatus, setPlaybackStatus] = useState("stopped");
   const [browserPlaybackEnabled, setBrowserPlaybackEnabled] = useState(false);
+  const [browserStatus, setBrowserStatus] = useState("disabled");
   const [browserMessage, setBrowserMessage] = useState("");
   const [url, setUrl] = useState("");
   const playerRootRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<YouTubePlayer | null>(null);
   const enabledRef = useRef(false);
+  const playerReadyRef = useRef(false);
+  const pendingPlayRef = useRef(false);
   const currentVideoIdRef = useRef("");
 
-  async function ensurePlayer() {
+  async function ensurePlayer(): Promise<YouTubePlayer | null> {
     if (playerRef.current || !playerRootRef.current) {
       return playerRef.current;
     }
@@ -95,22 +104,37 @@ export default function Home() {
         disablekb: 1,
         playsinline: 1,
       },
+      events: {
+        onReady: () => {
+          playerReadyRef.current = true;
+
+          if (pendingPlayRef.current) {
+            pendingPlayRef.current = false;
+            playerRef.current?.playVideo();
+            setBrowserStatus("playing");
+          }
+        },
+        onStateChange: (event) => {
+          if (event.data === 1) {
+            setBrowserStatus("playing");
+            return;
+          }
+
+          if (event.data === 0 || event.data === 2 || event.data === 5) {
+            setBrowserStatus(enabledRef.current ? "stopped" : "disabled");
+          }
+        },
+        onError: () => {
+          setBrowserStatus("blocked");
+          setBrowserMessage("Click Enable browser playback first.");
+        },
+      },
     });
 
     return playerRef.current;
   }
 
-  async function syncBrowserPlayback(nextStatus: string, nextUrl: unknown) {
-    if (nextStatus !== "playing") {
-      playerRef.current?.stopVideo();
-      currentVideoIdRef.current = "";
-      return;
-    }
-
-    if (typeof nextUrl !== "string") {
-      return;
-    }
-
+  async function playInBrowser(nextUrl: string) {
     const videoId = getYouTubeVideoId(nextUrl);
 
     if (!videoId) {
@@ -118,6 +142,7 @@ export default function Home() {
     }
 
     if (!enabledRef.current) {
+      setBrowserStatus("blocked");
       setBrowserMessage("Click Enable browser playback first.");
       return;
     }
@@ -134,13 +159,51 @@ export default function Home() {
       if (currentVideoIdRef.current !== videoId) {
         currentVideoIdRef.current = videoId;
         player.loadVideoById(videoId);
+
+        if (playerReadyRef.current) {
+          pendingPlayRef.current = false;
+          player.playVideo();
+          setBrowserStatus("playing");
+          return;
+        }
+
+        pendingPlayRef.current = true;
         return;
       }
 
+      if (!playerReadyRef.current) {
+        pendingPlayRef.current = true;
+        return;
+      }
+
+      pendingPlayRef.current = false;
       player.playVideo();
+      setBrowserStatus("playing");
     } catch {
+      setBrowserStatus("blocked");
       setBrowserMessage("Click Enable browser playback first.");
     }
+  }
+
+  function stopBrowserPlayback() {
+    pendingPlayRef.current = false;
+    currentVideoIdRef.current = "";
+    playerRef.current?.pauseVideo();
+    playerRef.current?.stopVideo();
+    setBrowserStatus(enabledRef.current ? "stopped" : "disabled");
+  }
+
+  async function syncBrowserPlayback(nextStatus: string, nextUrl: unknown) {
+    if (nextStatus !== "playing") {
+      stopBrowserPlayback();
+      return;
+    }
+
+    if (typeof nextUrl !== "string") {
+      return;
+    }
+
+    await playInBrowser(nextUrl);
   }
 
   async function refreshStatus() {
@@ -166,6 +229,7 @@ export default function Home() {
 
   async function play() {
     setStatus("Sending...");
+    void playInBrowser(url);
 
     try {
       const response = await fetch("/api/command", {
@@ -182,6 +246,7 @@ export default function Home() {
 
   async function stop() {
     setStatus("Sending...");
+    stopBrowserPlayback();
 
     try {
       const response = await fetch("/api/command", {
@@ -199,6 +264,7 @@ export default function Home() {
   async function enableBrowserPlayback() {
     enabledRef.current = true;
     setBrowserPlaybackEnabled(true);
+    setBrowserStatus("enabled");
     setBrowserMessage("Browser playback enabled");
 
     try {
@@ -248,6 +314,7 @@ export default function Home() {
         <div className="text-xs text-neutral-500">
           Status: {playbackStatus === "playing" ? "Playing" : "Stopped"}
         </div>
+        <div className="text-xs text-neutral-500">Browser: {browserStatus}</div>
         {browserMessage ? (
           <div className="text-xs text-neutral-500">{browserMessage}</div>
         ) : null}
