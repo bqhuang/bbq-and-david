@@ -71,6 +71,8 @@ function getYouTubeVideoId(url: string) {
 }
 
 export default function Home() {
+  const [hasCheckedOnboarding, setHasCheckedOnboarding] = useState(false);
+  const [hasJoinedMusicRoom, setHasJoinedMusicRoom] = useState(false);
   const [status, setStatus] = useState("");
   const [playbackStatus, setPlaybackStatus] = useState("stopped");
   const [browserPlaybackEnabled, setBrowserPlaybackEnabled] = useState(false);
@@ -83,6 +85,19 @@ export default function Home() {
   const playerReadyRef = useRef(false);
   const pendingPlayRef = useRef(false);
   const currentVideoIdRef = useRef("");
+
+  useEffect(() => {
+    const hasJoined = localStorage.getItem("musicRoomJoined") === "true";
+
+    if (hasJoined) {
+      enabledRef.current = true;
+      setBrowserPlaybackEnabled(true);
+      setBrowserStatus("enabled");
+    }
+
+    setHasJoinedMusicRoom(hasJoined);
+    setHasCheckedOnboarding(true);
+  }, []);
 
   async function ensurePlayer(): Promise<YouTubePlayer | null> {
     if (playerRef.current || !playerRootRef.current) {
@@ -220,12 +235,16 @@ export default function Home() {
   }
 
   useEffect(() => {
+    if (!hasJoinedMusicRoom) {
+      return;
+    }
+
     refreshStatus();
 
     const interval = setInterval(refreshStatus, 5_000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [hasJoinedMusicRoom]);
 
   async function play() {
     setStatus("Sending...");
@@ -275,6 +294,30 @@ export default function Home() {
     } catch {
       setBrowserMessage("Click Enable browser playback first.");
     }
+  }
+
+  async function joinMusicRoom() {
+    await enableBrowserPlayback();
+    localStorage.setItem("musicRoomJoined", "true");
+    setHasJoinedMusicRoom(true);
+  }
+
+  if (!hasCheckedOnboarding) {
+    return null;
+  }
+
+  if (!hasJoinedMusicRoom) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-white">
+        <button
+          type="button"
+          onClick={joinMusicRoom}
+          className="cursor-pointer rounded-lg bg-neutral-900 px-5 py-3 text-sm text-white transition hover:bg-neutral-700"
+        >
+          ❤️ Listen Together
+        </button>
+      </main>
+    );
   }
 
   return (
