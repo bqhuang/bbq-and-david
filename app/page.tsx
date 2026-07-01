@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { supabase } from "../lib/supabase";
 
 type YouTubePlayer = {
   loadVideoById: (videoId: string) => void;
@@ -71,16 +70,10 @@ function getYouTubeVideoId(url: string) {
   }
 }
 
-type CommandState = {
-  command?: unknown;
-  url?: unknown;
-  status?: unknown;
-};
-
 export default function Home() {
   const [hasCheckedOnboarding, setHasCheckedOnboarding] = useState(false);
   const [hasJoinedMusicRoom, setHasJoinedMusicRoom] = useState(false);
-  const [localPlaybackStatus, setLocalPlaybackStatus] = useState("stopped");
+  const [playbackStatus, setPlaybackStatus] = useState("stopped");
   const [pendingAction, setPendingAction] = useState<"play" | "stop" | null>(null);
   const [url, setUrl] = useState("");
   const playerRootRef = useRef<HTMLDivElement>(null);
@@ -88,7 +81,6 @@ export default function Home() {
   const enabledRef = useRef(false);
   const playerReadyRef = useRef(false);
   const pendingPlayRef = useRef(false);
-  const pendingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const currentVideoIdRef = useRef("");
 
   useEffect(() => {
@@ -131,69 +123,28 @@ export default function Home() {
             playerRef.current?.playVideo();
           }
         },
-        onStateChange: (event) => {
-          if (event.data === 1) {
-            setLocalPlaybackStatus("playing");
-            clearPending("play");
-            return;
-          }
-
-          if (event.data === 0 || event.data === 2 || event.data === 5) {
-            setLocalPlaybackStatus("stopped");
-            clearPending("stop");
-          }
-        },
       },
     });
 
     return playerRef.current;
   }
 
-  function clearPendingTimeout() {
-    if (!pendingTimeoutRef.current) {
-      return;
-    }
-
-    clearTimeout(pendingTimeoutRef.current);
-    pendingTimeoutRef.current = null;
-  }
-
-  function startPending(action: "play" | "stop") {
-    clearPendingTimeout();
-    setPendingAction(action);
-    pendingTimeoutRef.current = setTimeout(() => {
-      setPendingAction(null);
-      pendingTimeoutRef.current = null;
-    }, 8_000);
-  }
-
-  function clearPending(action?: "play" | "stop") {
-    clearPendingTimeout();
-    setPendingAction((current) => {
-      if (action && current !== action) {
-        return current;
-      }
-
-      return null;
-    });
-  }
-
   async function playInBrowser(nextUrl: string) {
     const videoId = getYouTubeVideoId(nextUrl);
 
     if (!videoId) {
-      return false;
+      return;
     }
 
     if (!enabledRef.current) {
-      return false;
+      return;
     }
 
     try {
       const player = await ensurePlayer();
 
       if (!player) {
-        return false;
+        return;
       }
 
       if (currentVideoIdRef.current !== videoId) {
@@ -203,24 +154,21 @@ export default function Home() {
         if (playerReadyRef.current) {
           pendingPlayRef.current = false;
           player.playVideo();
-          return true;
+          return;
         }
 
         pendingPlayRef.current = true;
-        return false;
+        return;
       }
 
       if (!playerReadyRef.current) {
         pendingPlayRef.current = true;
-        return false;
+        return;
       }
 
       pendingPlayRef.current = false;
       player.playVideo();
-      return true;
-    } catch {
-      return false;
-    }
+    } catch {}
   }
 
   function stopBrowserPlayback() {
@@ -228,8 +176,6 @@ export default function Home() {
     currentVideoIdRef.current = "";
     playerRef.current?.pauseVideo();
     playerRef.current?.stopVideo();
-    setLocalPlaybackStatus("stopped");
-    clearPending("stop");
   }
 
   async function syncBrowserPlayback(nextStatus: string, nextUrl: unknown) {
@@ -245,37 +191,27 @@ export default function Home() {
     await playInBrowser(nextUrl);
   }
 
-  async function applyCommandState(data: CommandState) {
-    const nextStatus = data.status === "playing" ? "playing" : "stopped";
-
-    if (typeof data.url === "string") {
-      setUrl(data.url);
-    }
-
-    setPendingAction((current) => {
-      if (current === "play" && nextStatus === "playing") {
-        clearPendingTimeout();
-        return null;
-      }
-
-      if (current === "stop" && nextStatus === "stopped") {
-        clearPendingTimeout();
-        return null;
-      }
-
-      return current;
-    });
-    await syncBrowserPlayback(nextStatus, data.url);
-  }
-
   async function refreshStatus() {
     try {
       const response = await fetch("/api/command");
       const data = await response.json();
+      const nextStatus = data.status === "playing" ? "playing" : "stopped";
 
-      await applyCommandState(data);
+      setPlaybackStatus(nextStatus);
+      setPendingAction((current) => {
+        if (current === "play" && nextStatus === "playing") {
+          return null;
+        }
+
+        if (current === "stop" && nextStatus === "stopped") {
+          return null;
+        }
+
+        return current;
+      });
+      await syncBrowserPlayback(nextStatus, data.url);
     } catch {
-      setLocalPlaybackStatus("stopped");
+      setPlaybackStatus("stopped");
     }
   }
 
@@ -286,34 +222,14 @@ export default function Home() {
 
     refreshStatus();
 
-    const channel = supabase
-      .channel("command-state-main")
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "command_state",
-          filter: "id=eq.main",
-        },
-        (payload) => {
-          void applyCommandState(payload.new as CommandState);
-        },
-      )
-      .subscribe();
+    const interval = setInterval(refreshStatus, 5_000);
 
-    const interval = setInterval(refreshStatus, 30_000);
-
-    return () => {
-      clearInterval(interval);
-      void supabase.removeChannel(channel);
-    };
+    return () => clearInterval(interval);
   }, [hasJoinedMusicRoom]);
 
   async function play() {
-    startPending("play");
-
-    await playInBrowser(url);
+    setPendingAction("play");
+    void playInBrowser(url);
 
     try {
       await fetch("/api/command", {
@@ -326,7 +242,7 @@ export default function Home() {
   }
 
   async function stop() {
-    startPending("stop");
+    setPendingAction("stop");
     stopBrowserPlayback();
 
     try {
@@ -344,7 +260,7 @@ export default function Home() {
       return;
     }
 
-    if (localPlaybackStatus === "playing") {
+    if (playbackStatus === "playing") {
       await stop();
       return;
     }
@@ -386,10 +302,10 @@ export default function Home() {
   }
 
   const isLoading = pendingAction !== null;
-  const isPlaying = localPlaybackStatus === "playing" && !isLoading;
+  const isPlaying = playbackStatus === "playing" && !isLoading;
   const buttonLabel = isLoading
     ? "Loading"
-    : localPlaybackStatus === "playing"
+    : playbackStatus === "playing"
       ? "Stop"
       : "Play";
 
