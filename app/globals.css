@@ -30,6 +30,15 @@
   animation-delay: 0.42s;
 }
 
+.audio-spinner {
+  width: 0.7em;
+  height: 0.7em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 999px;
+  animation: audio-spinner 0.9s linear infinite;
+}
+
 @keyframes audio-bar {
   0%,
   100% {
@@ -38,5 +47,11 @@
 
   50% {
     height: 1em;
+  }
+}
+
+@keyframes audio-spinner {
+  to {
+    transform: rotate(360deg);
   }
 }

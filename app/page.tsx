@@ -74,6 +74,7 @@ export default function Home() {
   const [hasCheckedOnboarding, setHasCheckedOnboarding] = useState(false);
   const [hasJoinedMusicRoom, setHasJoinedMusicRoom] = useState(false);
   const [playbackStatus, setPlaybackStatus] = useState("stopped");
+  const [pendingAction, setPendingAction] = useState<"play" | "stop" | null>(null);
   const [url, setUrl] = useState("");
   const playerRootRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<YouTubePlayer | null>(null);
@@ -197,6 +198,17 @@ export default function Home() {
       const nextStatus = data.status === "playing" ? "playing" : "stopped";
 
       setPlaybackStatus(nextStatus);
+      setPendingAction((current) => {
+        if (current === "play" && nextStatus === "playing") {
+          return null;
+        }
+
+        if (current === "stop" && nextStatus === "stopped") {
+          return null;
+        }
+
+        return current;
+      });
       await syncBrowserPlayback(nextStatus, data.url);
     } catch {
       setPlaybackStatus("stopped");
@@ -216,7 +228,7 @@ export default function Home() {
   }, [hasJoinedMusicRoom]);
 
   async function play() {
-    setPlaybackStatus("playing");
+    setPendingAction("play");
     void playInBrowser(url);
 
     try {
@@ -230,7 +242,7 @@ export default function Home() {
   }
 
   async function stop() {
-    setPlaybackStatus("stopped");
+    setPendingAction("stop");
     stopBrowserPlayback();
 
     try {
@@ -244,6 +256,10 @@ export default function Home() {
   }
 
   async function togglePlayback() {
+    if (pendingAction) {
+      return;
+    }
+
     if (playbackStatus === "playing") {
       await stop();
       return;
@@ -285,6 +301,14 @@ export default function Home() {
     );
   }
 
+  const isLoading = pendingAction !== null;
+  const isPlaying = playbackStatus === "playing" && !isLoading;
+  const buttonLabel = isLoading
+    ? "Loading"
+    : playbackStatus === "playing"
+      ? "Stop"
+      : "Play";
+
   return (
     <main className="flex min-h-screen items-center justify-center bg-white">
       <div className="flex w-full max-w-xs flex-col items-center gap-3 px-6">
@@ -298,19 +322,24 @@ export default function Home() {
         />
         <button
           type="button"
+          disabled={isLoading}
           onClick={togglePlayback}
-          className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-neutral-900 px-4 py-2 text-sm text-white transition hover:bg-neutral-700"
+          className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-neutral-900 px-4 py-2 text-sm text-white transition hover:bg-neutral-700 disabled:cursor-default disabled:opacity-80"
         >
-          <span
-            aria-hidden="true"
-            className={`audio-bars ${playbackStatus === "playing" ? "is-playing" : ""}`}
-          >
-            <span />
-            <span />
-            <span />
-            <span />
-          </span>
-          {playbackStatus === "playing" ? "Stop" : "Play"}
+          {isLoading ? (
+            <span aria-hidden="true" className="audio-spinner" />
+          ) : (
+            <span
+              aria-hidden="true"
+              className={`audio-bars ${isPlaying ? "is-playing" : ""}`}
+            >
+              <span />
+              <span />
+              <span />
+              <span />
+            </span>
+          )}
+          {buttonLabel}
         </button>
       </div>
       <div
