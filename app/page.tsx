@@ -82,6 +82,7 @@ export default function Home() {
   const [hasCheckedOnboarding, setHasCheckedOnboarding] = useState(false);
   const [hasJoinedMusicRoom, setHasJoinedMusicRoom] = useState(false);
   const [playbackStatus, setPlaybackStatus] = useState("stopped");
+  const [playbackUrl, setPlaybackUrl] = useState("");
   const [pendingAction, setPendingAction] = useState<"play" | "stop" | null>(null);
   const [queueItems, setQueueItems] = useState<QueueItem[]>([]);
   const [isAdding, setIsAdding] = useState(false);
@@ -209,6 +210,9 @@ export default function Home() {
       const nextStatus = data.status === "playing" ? "playing" : "stopped";
 
       setPlaybackStatus(nextStatus);
+      setPlaybackUrl(
+        nextStatus === "playing" && typeof data.url === "string" ? data.url : "",
+      );
       setPendingAction((current) => {
         if (current === "play" && nextStatus === "playing") {
           return null;
@@ -223,6 +227,7 @@ export default function Home() {
       await syncBrowserPlayback(nextStatus, data.url);
     } catch {
       setPlaybackStatus("stopped");
+      setPlaybackUrl("");
     }
   }
 
@@ -342,6 +347,7 @@ export default function Home() {
     }
 
     setPendingAction("play");
+    setPlaybackUrl(firstSong.url);
     void playInBrowser(firstSong.url);
 
     try {
@@ -360,6 +366,7 @@ export default function Home() {
 
   async function stop() {
     setPendingAction("stop");
+    setPlaybackUrl("");
     stopBrowserPlayback();
 
     try {
@@ -429,32 +436,7 @@ export default function Home() {
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-white">
-      <div className="grid w-full max-w-2xl grid-cols-1 items-center gap-8 px-6 sm:grid-cols-[12rem_minmax(0,20rem)]">
-        <div className="flex flex-col items-center gap-5">
-          <button
-            type="button"
-            disabled={isLoading || (!isPlaying && !hasQueuedSongs)}
-            onClick={togglePlayback}
-            className="flex h-28 w-28 cursor-pointer flex-col items-center justify-center gap-2 rounded-full bg-neutral-900 text-base text-white transition hover:bg-neutral-700 disabled:cursor-default disabled:opacity-80"
-          >
-            {isLoading ? (
-              <span aria-hidden="true" className="audio-spinner" />
-            ) : (
-              <span
-                aria-hidden="true"
-                className={`audio-bars ${isPlaying ? "is-playing" : ""}`}
-              >
-                <span />
-                <span />
-                <span />
-                <span />
-              </span>
-            )}
-            <span className="text-sm">{buttonLabel}</span>
-          </button>
-        </div>
-
-        <div className="flex w-full flex-col gap-3">
+      <div className="flex w-full max-w-xs flex-col items-center gap-3 px-6">
           <div className="text-center text-2xl">❤️</div>
           <input
             type="url"
@@ -475,31 +457,57 @@ export default function Home() {
             <div className="mb-2 text-xs text-neutral-500">Queue</div>
             {queueItems.length ? (
               <ol className="max-h-[8.875rem] space-y-1 overflow-y-auto pr-1">
-                {queueItems.map((item) => (
-                  <li
-                    key={item.id}
-                    className="group grid max-w-full grid-cols-[minmax(0,1fr)_1.25rem] items-center rounded-md px-1 py-1 leading-5 text-neutral-800 transition-colors duration-200 hover:bg-neutral-100/70"
-                  >
-                    <span className="truncate">♪ {item.title}</span>
-                    <button
-                      type="button"
-                      aria-label="Remove song"
-                      onClick={() => removeSong(item.id)}
-                      className="h-5 cursor-pointer text-center text-sm font-light leading-5 text-current opacity-0 transition-opacity duration-200 focus:opacity-100 focus:outline-none group-hover:opacity-100"
+                {queueItems.map((item) => {
+                  const isCurrentSong = isPlaying && item.url === playbackUrl;
+
+                  return (
+                    <li
+                      key={item.id}
+                      className="group grid max-w-full grid-cols-[1.25rem_minmax(0,1fr)_1.25rem] items-center rounded-md px-1 py-1 leading-5 text-neutral-800 transition-colors duration-200 hover:bg-neutral-100/70"
                     >
-                      ×
-                    </button>
-                  </li>
-                ))}
+                      <span className="flex h-5 items-center justify-center text-sm text-current">
+                        {isCurrentSong ? (
+                          <span
+                            aria-hidden="true"
+                            className="audio-bars is-playing"
+                          >
+                            <span />
+                            <span />
+                            <span />
+                            <span />
+                          </span>
+                        ) : (
+                          "♪"
+                        )}
+                      </span>
+                      <span className="truncate">{item.title}</span>
+                      <button
+                        type="button"
+                        aria-label="Remove song"
+                        onClick={() => removeSong(item.id)}
+                        className="h-5 cursor-pointer text-center text-sm font-light leading-5 text-current opacity-0 transition-opacity duration-200 focus:opacity-100 focus:outline-none group-hover:opacity-100"
+                      >
+                        ×
+                      </button>
+                    </li>
+                  );
+                })}
               </ol>
             ) : (
               <div className="text-xs text-neutral-500">Add a song first.</div>
             )}
           </div>
+          <button
+            type="button"
+            disabled={isLoading || (!isPlaying && !hasQueuedSongs)}
+            onClick={togglePlayback}
+            className="w-full cursor-pointer rounded-lg bg-neutral-900 px-4 py-2 text-sm text-white transition hover:bg-neutral-700 disabled:cursor-default disabled:opacity-80"
+          >
+            {buttonLabel}
+          </button>
           {queueMessage ? (
             <div className="text-xs text-neutral-500">{queueMessage}</div>
           ) : null}
-        </div>
       </div>
       <div
         aria-hidden="true"
