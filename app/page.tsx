@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { supabase } from "../lib/supabase";
 
 type YouTubePlayer = {
   loadVideoById: (videoId: string) => void;
@@ -69,6 +70,12 @@ function getYouTubeVideoId(url: string) {
     return null;
   }
 }
+
+type CommandState = {
+  command?: unknown;
+  url?: unknown;
+  status?: unknown;
+};
 
 export default function Home() {
   const [hasCheckedOnboarding, setHasCheckedOnboarding] = useState(false);
@@ -191,25 +198,30 @@ export default function Home() {
     await playInBrowser(nextUrl);
   }
 
+  async function applyCommandState(data: CommandState) {
+    const nextStatus = data.status === "playing" ? "playing" : "stopped";
+
+    setPlaybackStatus(nextStatus);
+    setPendingAction((current) => {
+      if (current === "play" && nextStatus === "playing") {
+        return null;
+      }
+
+      if (current === "stop" && nextStatus === "stopped") {
+        return null;
+      }
+
+      return current;
+    });
+    await syncBrowserPlayback(nextStatus, data.url);
+  }
+
   async function refreshStatus() {
     try {
       const response = await fetch("/api/command");
       const data = await response.json();
-      const nextStatus = data.status === "playing" ? "playing" : "stopped";
 
-      setPlaybackStatus(nextStatus);
-      setPendingAction((current) => {
-        if (current === "play" && nextStatus === "playing") {
-          return null;
-        }
-
-        if (current === "stop" && nextStatus === "stopped") {
-          return null;
-        }
-
-        return current;
-      });
-      await syncBrowserPlayback(nextStatus, data.url);
+      await applyCommandState(data);
     } catch {
       setPlaybackStatus("stopped");
     }
@@ -222,9 +234,28 @@ export default function Home() {
 
     refreshStatus();
 
-    const interval = setInterval(refreshStatus, 5_000);
+    const channel = supabase
+      .channel("command-state-main")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "command_state",
+          filter: "id=eq.main",
+        },
+        (payload) => {
+          void applyCommandState(payload.new as CommandState);
+        },
+      )
+      .subscribe();
 
-    return () => clearInterval(interval);
+    const interval = setInterval(refreshStatus, 30_000);
+
+    return () => {
+      clearInterval(interval);
+      void supabase.removeChannel(channel);
+    };
   }, [hasJoinedMusicRoom]);
 
   async function play() {
